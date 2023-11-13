@@ -30,7 +30,7 @@ team_t team = {
     /* First member's email address */
     "example@example.com",
     /* Second member's full name (leave blank if none) */
-    "SM, SG",
+    "",
     /* Second member's email address (leave blank if none) */
     ""
 };
@@ -102,20 +102,47 @@ static void* coalesce(void* bp);
 static void* find_fit(size_t asize);
 static void place(void* bp, size_t sizt);
 
+static char* recent_bp;
+
 ///////////////////// [ FIT STRAGEGY : 메모리 할당 정책 ]//////////////////////////////
 /* find fit strategy */
+// [ First fit ] //
+//Perf index = 44 (util) + 9 (thru) = 53/100
+// static void* find_fit(size_t asize){
+
+//     void* bp;
+
+//     /* First-fit search */
+//     for (bp = heap_listp; GET_SIZE(HDRP(bp))>0; bp=NEXT_BLKP(bp)){
+//         if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+//             return bp;
+//         }
+//     }
+
+//     return NULL; /* No fit */
+// }
+
+// [ Next - fit ]
 static void* find_fit(size_t asize){
+    char* bp = recent_bp;
 
-    void* bp;
+    //bp = recent_bp;
 
-    /* First-fit search */
-    for (bp = heap_listp; GET_SIZE(HDRP(bp))>0; bp=NEXT_BLKP(bp)){
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
+    for(bp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+        if((!GET_ALLOC(HDRP(bp))) && GET_SIZE(HDRP(bp))>=asize){
+            recent_bp = bp;
+            return bp;
+        }
+        
+    }
+
+    for (bp = heap_listp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+        if(!(GET_ALLOC(HDRP(bp))) && GET_SIZE(HDRP(bp))>=asize){
+            recent_bp = bp;
             return bp;
         }
     }
 
-    return NULL; /* No fit */
 }
 
 
@@ -135,6 +162,7 @@ static void* coalesce(void* bp){
     //case 1 : [ 1 ][ 0 ][ 1 ]  _ 101
     // 둘 다 1일 경우 - 할당 되어 있음, 결합 금지.
     if (prev_alloc && next_alloc){
+        recent_bp=bp;
         return bp; 
     }
     //case 2 : [ 1 ][ 0 ][ 0 ] _ 100
@@ -161,7 +189,7 @@ static void* coalesce(void* bp){
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-
+    recent_bp=bp;
     return bp;
 }
 
@@ -206,6 +234,7 @@ int mm_init(void)
     PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
     PUT(heap_listp + (3*WSIZE), PACK(0, 1)); /* Epilogue header */
     heap_listp += (2*WSIZE); //header와 footer 사이에 bp 를 세팅.
+    recent_bp=heap_listp;
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     /* extend_heap에서 size를 alignment에 따라 조정하는데 
@@ -213,6 +242,8 @@ int mm_init(void)
     따져 x WSIZE를 하기 때문에 이 곳에서 나눈 몫을 넣어 준다.*/
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
         return -1;
+
+    recent_bp=heap_listp;
     return 0;
 }
 
@@ -292,6 +323,7 @@ void *mm_malloc(size_t size)
     /* Search the free list for a fit */
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
+        recent_bp=bp;
         return bp;
     }
 
@@ -301,6 +333,7 @@ void *mm_malloc(size_t size)
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
         return NULL;
     place(bp, asize);
+    recent_bp=bp;
     return bp;
 
     /* ORIGINAL SOURCE CODES */
