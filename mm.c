@@ -104,6 +104,8 @@ static void place(void* bp, size_t sizt);
 
 ///////////////////// [ FIT STRAGEGY : 메모리 할당 정책 ]//////////////////////////////
 /* find fit strategy */
+// [ First fit ] //
+//Perf index = 44 (util) + 9 (thru) = 53/100
 static void* find_fit(size_t asize){
 
     void* bp;
