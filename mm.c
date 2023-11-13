@@ -30,7 +30,7 @@ team_t team = {
     /* First member's email address */
     "example@example.com",
     /* Second member's full name (leave blank if none) */
-    "SM, SG",
+    "",
     /* Second member's email address (leave blank if none) */
     ""
 };
