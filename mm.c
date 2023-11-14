@@ -126,10 +126,11 @@ static char* recent_bp;
 static void* find_fit(size_t asize){
     char* bp;
 
-    //bp = recent_bp;
+    bp = recent_bp;
+    for(bp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
 
-    for(bp = NEXT_BLKP(recent_bp) ; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
-    //for(bp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+    //for(bp = NEXT_BLKP(recent_bp) ; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+    
         if((!GET_ALLOC(HDRP(bp))) && GET_SIZE(HDRP(bp))>=asize){
             recent_bp = bp;
             return bp;
@@ -141,14 +142,14 @@ static void* find_fit(size_t asize){
 
     //type 2 : 가장 최근 블록 이전 까지만 탐색
     //Perf index = 43 (util) + 38 (thru) = 81/100
-    
+
     for (bp = heap_listp; bp<=recent_bp; bp = NEXT_BLKP(bp)){
         if(!(GET_ALLOC(HDRP(bp))) && GET_SIZE(HDRP(bp))>=asize){
             //recent_bp = bp;
             return bp;
         }
     }
-
+    // no fit  - 없으면 error 뜸
     return NULL;
 
 }
