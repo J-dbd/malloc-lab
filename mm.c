@@ -93,7 +93,7 @@ team_t team = {
 
 
 
-/* **********************[ FIRST FIT strategy ]******************************* */
+/* **********************[ BEST FIT strategy ]******************************* */
 
 ///////////////////// [ DECLARATION : 선언부 ]//////////////////////////////
 static void* heap_listp;
@@ -103,23 +103,31 @@ static void* find_fit(size_t asize);
 static void place(void* bp, size_t sizt);
 
 ///////////////////// [ FIT STRAGEGY : 메모리 할당 정책 ]//////////////////////////////
+
 /* find fit strategy */
-// [ First fit ] //
-//Perf index = 44 (util) + 9 (thru) = 53/100
+// [ BEST fit ] //
+// Perf index = 45 (util) + 8 (thru) = 53/100
+
 static void* find_fit(size_t asize){
 
     void* bp;
+    void* min_bp = NULL;
 
-    /* First-fit search */
     for (bp = heap_listp; GET_SIZE(HDRP(bp))>0; bp=NEXT_BLKP(bp)){
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp)))) {
-            return bp;
+        if (!GET_ALLOC(HDRP(bp)) && (asize<= GET_SIZE(HDRP(bp))) ){
+            if((min_bp == NULL) || (GET_SIZE(HDRP(bp)) <= GET_SIZE(HDRP(min_bp))))
+                min_bp=bp;
         }
     }
 
-    return NULL; /* No fit */
+    return min_bp;
+
 }
 
+// return null이 없는 이유: best-fit 전략을 사용해도 맞는 게 없다면 
+// 그대로 min_bp(NULL인) 가 리턴 되기 때문.
+
+// nested - if : Both versions of the code, with nested if-statements and without, are functionally equivalent. The choice between them often comes down to personal coding style and readability. 
 
 
 /////////////////////[ FREE / DEALLOCATE : 할당 해제  ]//////////////////////////////
