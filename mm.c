@@ -93,7 +93,7 @@ team_t team = {
 
 
 
-/* **********************[ FIRST FIT strategy ]******************************* */
+/* **********************[ NEXT FIT strategy ]******************************* */
 
 ///////////////////// [ DECLARATION : 선언부 ]//////////////////////////////
 static void* heap_listp;
@@ -127,9 +127,9 @@ static void* find_fit(size_t asize){
     char* bp;
 
     bp = recent_bp;
-    for(bp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
-
-    //for(bp = NEXT_BLKP(recent_bp) ; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+    //for(bp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+    //NEXT FIT 정의: 다음 블록부터, 따라서 아래 코드가 좀 더 정의에 부합하는 듯 함.
+    for(bp = NEXT_BLKP(recent_bp) ; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
     
         if((!GET_ALLOC(HDRP(bp))) && GET_SIZE(HDRP(bp))>=asize){
             recent_bp = bp;
@@ -171,17 +171,28 @@ static void* coalesce(void* bp){
     //case 1 : [ 1 ][ 0 ][ 1 ]  _ 101
     // 둘 다 1일 경우 - 할당 되어 있음, 결합 금지.
     if (prev_alloc && next_alloc){
-        recent_bp=bp;
-        return bp; 
+        recent_bp=bp; //안해도 됨
+        return bp;  
     }
     //case 2 : [ 1 ][ 0 ][ 0 ] _ 100
     // 뒷 블록이 0일 경우, 결합
     /* 뒷 블록의 bp를 통해 Footer 를 계산하지 않고 현재 블록의 bp로 footer를 구하는 이유는 HDRP(bp)로 구한 header address에 에 PUT을 통해 size를 갱신해주었기 때문이다. FTRP는 HDRP에서 사이즈를 추출하여 현재 블록의 bp에서 footer를 찾는데 그 사이즈가 이미 갱신된 사이즈고, 따라서 현재 Header는 이미 뒷블록 사이즈까지 결합된 size를 품고 있다.   */
+
+    // IN NEXT FIT 
+    // 여기서 r_bp 업데이트를 하지 않는다면 
+    // r_bp는 마지막엔 비어있는 공간을 가리킨다
+
+    //          r_bp               r_bp
+    // [ 1 ][ 1 ][ 0 ] -> [ 1 ][ 0 ][ 0 ] 
+
+
     else if (prev_alloc && !next_alloc){
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size,0));
     }
+
+
     //case 3 : [ 0 ][ 0 ][ 1 ] _ 001
     // 앞 블록이 0일 경우, 결합
     else if (!prev_alloc && next_alloc){
@@ -294,6 +305,8 @@ static void place(void* bp, size_t asize)
     if((csize-asize)>= (2*DSIZE)){
         PUT(HDRP(bp), PACK(asize, 1));
         PUT(FTRP(bp), PACK(asize, 1));
+        recent_bp = bp;
+        
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize-asize, 0));
         PUT(FTRP(bp), PACK(csize-asize, 0));
@@ -301,9 +314,11 @@ static void place(void* bp, size_t asize)
     else{
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
+
+        recent_bp = bp;
     }
 
-    recent_bp = bp;
+    //recent_bp = bp;
 }
 
 
@@ -312,33 +327,44 @@ static void place(void* bp, size_t asize)
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
+
+    brk 포인터를 증가시킴으로써 하나의 블록을 할당한다. 
+    조정(adjust)을 통해서 항상 정렬(alignment)의 배수 크기를 가진 블록을 할당한다. 
  */
 void *mm_malloc(size_t size)
 {
+
 
     size_t asize;     /* Adjusted block size */
     size_t extendsize; /* Amount to extend heap if no fit */
     char* bp;
 
-    /* Ignore spurious requests */
+    /* Ignore spurious requests 가짜/위조 요청 무시 */ 
     if (size == 0)
         return NULL;
 
     /* Adjust block size to include overhead and alignment reqs. */
+    /* 요청받은 size가 DSIZE보다 작을 때 2DSIZE만큼 늘린다. 
+        */
     if (size <= DSIZE)
         asize = 2*DSIZE;
 
-    else //size>DSIZE
+    else //size > DSIZE
+    /* (DSIZE - 1) 를 하여 size와 DSIZE와 함께 더하고 DSIZE로 나누어 
+        최대한 가까운 DSIZE의 배수에 맞추어 
+        입력받은 size를 조정한다.*/
+    /* alignment를 지키기 위해서 이와 같은 조정 과정을 거친다. */
         asize = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
 
     /* Search the free list for a fit */
     if ((bp = find_fit(asize)) != NULL) {
         place(bp, asize);
-        recent_bp=bp;
+        recent_bp=bp; //for next-fit
         return bp;
     }
 
     /* No fit found. Get more memory and place the block */
+    //fit을 찾지 못했을 때 heap을 늘려야 한다. 
     extendsize = MAX(asize,CHUNKSIZE);
 
     if ((bp = extend_heap(extendsize/WSIZE)) == NULL)
@@ -347,7 +373,7 @@ void *mm_malloc(size_t size)
     recent_bp=bp;
     return bp;
 
-    /* ORIGINAL SOURCE CODES */
+    /* ORIGINAL SOURCE CODES OF mm_malloc*/
     // int newsize = ALIGN(size + SIZE_T_SIZE);
     // void *p = mem_sbrk(newsize);
     // if (p == (void *)-1)
@@ -369,14 +395,22 @@ void *mm_realloc(void *ptr, size_t size)
     void *newptr;
     size_t copySize;
     
+    //size만큼의 크기를 mm_malloc을 활용하여 기존의 블록에서 할당 시도
     newptr = mm_malloc(size);
     if (newptr == NULL)
       return NULL;
+    /* 원래 있던 코드인데 SIZE_T_SIZE를 사용하지 않으므로 주석 처리 */
     //copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
     copySize = GET_SIZE(HDRP(oldptr));
     if (size < copySize)
       copySize = size;
+    //printf("oldptr: %p /copiedSize: %zx / newptr : %p\n", oldptr, copySize, newptr);
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
     return newptr;
+
+    
 }
+
+//Perf index = 43 (util) + 37 (thru) = 80/100
+//Perf index = 43 (util) + 10 (thru) = 53/100
