@@ -124,24 +124,32 @@ static char* recent_bp;
 
 // [ Next - fit ]
 static void* find_fit(size_t asize){
-    char* bp = recent_bp;
+    char* bp;
 
     //bp = recent_bp;
 
-    for(bp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+    for(bp = NEXT_BLKP(recent_bp) ; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+    //for(bp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
         if((!GET_ALLOC(HDRP(bp))) && GET_SIZE(HDRP(bp))>=asize){
             recent_bp = bp;
             return bp;
         }
         
     }
+    //type 1 : free block의 크기가 0보다 큰 모두를 탐색 
+    //for (bp = heap_listp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){ 
 
-    for (bp = heap_listp; GET_SIZE(HDRP(bp))>0; bp = NEXT_BLKP(bp)){
+    //type 2 : 가장 최근 블록 이전 까지만 탐색
+    //Perf index = 43 (util) + 38 (thru) = 81/100
+    
+    for (bp = heap_listp; bp<=recent_bp; bp = NEXT_BLKP(bp)){
         if(!(GET_ALLOC(HDRP(bp))) && GET_SIZE(HDRP(bp))>=asize){
-            recent_bp = bp;
+            //recent_bp = bp;
             return bp;
         }
     }
+
+    return NULL;
 
 }
 
@@ -234,7 +242,7 @@ int mm_init(void)
     PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
     PUT(heap_listp + (3*WSIZE), PACK(0, 1)); /* Epilogue header */
     heap_listp += (2*WSIZE); //header와 footer 사이에 bp 를 세팅.
-    recent_bp=heap_listp;
+    //recent_bp=heap_listp;
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     /* extend_heap에서 size를 alignment에 따라 조정하는데 
@@ -293,6 +301,8 @@ static void place(void* bp, size_t asize)
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
+
+    recent_bp = bp;
 }
 
 
