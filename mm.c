@@ -394,11 +394,19 @@ void *mm_realloc(void *ptr, size_t size)
     void *oldptr = ptr;
     void *newptr;
     size_t copySize;
-    
+
+    if(size<=0){
+        mm_free(oldptr);
+        return 0;
+    }
     //size만큼의 크기를 mm_malloc을 활용하여 기존의 블록에서 할당 시도
+    if(oldptr == NULL){
+        return mm_malloc(size);
+    }
     newptr = mm_malloc(size);
-    if (newptr == NULL)
-      return NULL;
+    if(newptr==NULL){
+        return 0;
+    }
     /* 원래 있던 코드인데 SIZE_T_SIZE를 사용하지 않으므로 주석 처리 */
     //copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
     copySize = GET_SIZE(HDRP(oldptr));
