@@ -395,6 +395,7 @@ void *mm_realloc(void *ptr, size_t size)
     void *newptr;
     size_t copySize;
 
+    //size가 0보다 작거나 같다면 
     if(size<=0){
         mm_free(oldptr);
         return 0;
@@ -403,7 +404,56 @@ void *mm_realloc(void *ptr, size_t size)
     if(oldptr == NULL){
         return mm_malloc(size);
     }
+
+
+    // SM's idea
+
+    /* 만약 조정을 요청한 블록의 그 다음 블록이 free하고
+        요청받은 사이즈가 (현재 요청한 블록의 사이즈 + 이 다음 FREE한 블록의 사이즈) 보다 작다면 
+        다른 블록을 찾으러 가는 연산을 수행하지 않아도 된다. 
+        그 경우를 따로 빼서 연산을 줄여 점수를 높일 수 있다(!)*/
+    size_t csize = GET_SIZE(HDRP(oldptr));
+    size_t nsize = GET_SIZE(HDRP(NEXT_BLKP(oldptr)));
+
+    
+    
+    // [1] (현재 조정 요청 받은 블록의 사이즈 + 다음 블록의 크기) > 요청 받은 크기 
+    // [2] 다음 블록이 free 인지 아닌지 체크
+    if ((csize + nsize > size) && (!GET_ALLOC(HDRP(NEXT_BLKP(oldptr)))))  {
+        //place와 같은 원리.
+        //alignment를 지키기 위해 size를 WSIZE의 배수로 조정한다. 
+        if (size<=DSIZE)
+            size = 2*DSIZE;
+        else
+            size = DSIZE*((size + (DSIZE) + (DSIZE-1)) / DSIZE);
+
+        // 합치고 할당한 이후에 크기가 남는다면 남은 것 할당 
+        if ( (csize + nsize) - size >= 2*DSIZE){
+            //set tag(header & footer)
+            PUT(HDRP(oldptr), PACK(size, 1));
+            PUT(FTRP(oldptr), PACK(size, 1));
+            recent_bp = oldptr;
+            //남은 것 free로 개별 블록 선언(by tagging)
+            oldptr = NEXT_BLKP(oldptr);
+            PUT(HDRP(oldptr), PACK(((csize + nsize) - size), 0));
+            PUT(FTRP(oldptr), PACK(((csize + nsize) - size), 0)); 
+
+            return recent_bp;           
+        }
+
+        else{
+            PUT(HDRP(oldptr), PACK(csize + nsize, 1));
+            PUT(FTRP(oldptr), PACK(csize + nsize, 1));
+            recent_bp = oldptr;
+
+            return oldptr; 
+        }
+
+    }
+
+    //위 조건에 맞지 않을 때 mm_malloc으로 할당 함
     newptr = mm_malloc(size);
+    //newptr가 없을 때 
     if(newptr==NULL){
         return 0;
     }
@@ -412,13 +462,33 @@ void *mm_realloc(void *ptr, size_t size)
     copySize = GET_SIZE(HDRP(oldptr));
     if (size < copySize)
       copySize = size;
-    //printf("oldptr: %p /copiedSize: %zx / newptr : %p\n", oldptr, copySize, newptr);
     memcpy(newptr, oldptr, copySize);
     mm_free(oldptr);
-    return newptr;
 
-    
+    return newptr;
 }
 
 //Perf index = 43 (util) + 37 (thru) = 80/100
 //Perf index = 43 (util) + 10 (thru) = 53/100
+
+/*
+23.11.15
+
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+ 0       yes   89%    5694  0.002305  2470
+ 1       yes   91%    5848  0.001502  3893
+ 2       yes   95%    6648  0.004864  1367
+ 3       yes   97%    5380  0.004592  1172
+ 4       yes   66%   14400  0.000146 98833
+ 5       yes   92%    4800  0.005480   876
+ 6       yes   90%    4800  0.004861   987
+ 7       yes   55%   12000  0.028030   428
+ 8       yes   51%   24000  0.013137  1827
+ 9       yes   26%   14401  0.099677   144
+10       yes   45%   14401  0.002420  5952
+Total          73%  112372  0.167013   673
+
+Perf index = 44 (util) + 40 (thru) = 84/100
+
+*/
