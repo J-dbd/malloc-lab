@@ -1,3 +1,4 @@
+// [ Explicit  / first fit ]
 /*
  * mm-naive.c - The fastest, least memory-efficient malloc package.
  * 
@@ -72,7 +73,9 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
-
+//[TYPE 1] 
+#define PRED(bp) ((void** )(bp))
+#define SUCC(bp) ((void** )(bp + WSIZE))
 
 /* **********************[ FIRST FIT strategy ]******************************* */
 
@@ -165,18 +168,37 @@ void mm_free(void *ptr)
  * mm_init - initialize the malloc package.
  initialize Run-time heap created by malloc
  */
+
+
+
 int mm_init(void)
 
+ // [TYPE 1] using 2 blocks for pred&succ
+
+ // [ 0/1 ][ 32/1 ][ PRED ][ SUCC ][ 32/1 ][ 0/1 ]
+ //------------------------------------------------
+ //               ^ heap_listp;
+ //________________________________________________
+ //   x      ph     ->succ  ->pred    pf    ep-block
+ //                 or NULL  or NULL
+ //-------------------------------------------------
 {
     /* Create the initial empty heap */
     if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1)
         return -1;
     PUT(heap_listp, 0); /* Alignment padding */
 
-    PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1)); /* Prologue header */
-    PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
-    PUT(heap_listp + (3*WSIZE), PACK(0, 1)); /* Epilogue header */
-    heap_listp += (2*WSIZE); //header와 footer 사이에 bp 를 세팅.
+    PUT(heap_listp + (1*WSIZE), PACK(2*DSIZE, 1)); /* Prologue header */
+    PUT(heap_listp + (4*WSIZE), PACK(2*DSIZE, 1)); /* Prologue footer */
+    PUT(heap_listp + (5*WSIZE), PACK(0, 1)); /* Epilogue header */
+
+    // Pred & Succ blocks
+    PUT(heap_listp + (2*WSIZE), heap_listp + (3*WSIZE));
+    PUT(heap_listp + (3*WSIZE), heap_listp + (2*WSIZE));
+    
+    heap_listp += (2*WSIZE); 
+    //header와 footer 사이에 bp 를 세팅.
+    //[TYPE 1] : payload 였던 부분에 pred와 succ를 놓으므로 pred앞에 heap_list를 놓는다.
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
@@ -202,6 +224,21 @@ static void* extend_heap(size_t words){
     /* Coalesce if the previous block was free */
     return coalesce(bp);
     
+}
+
+/////////////////////[ [TYPE 1] setting ]///////////////////////////////
+/* free 블록 생성시 payload에 2칸의 블록을 사용하여 이전/이후 블록의 주소를 저장한다. */
+static void* put_freeblock(void* bp){
+    PRED(p) = heap_listp;
+    SUCC(p) = SUCC(heap_listp);
+
+    PRED(SUCC(heap_listp)) = bp;
+    SUCC(heap_listp) = bp;
+}
+
+static void* rm_blocks(void* bp){
+
+
 }
 
 /////////////////////[ PLACING : 블록 조정 ]//////////////////////////////
