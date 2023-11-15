@@ -1,3 +1,6 @@
+/* Explicit Free List & next-fit 
+    - init에서 6*WSIZE를 할당, 블록을 사용함 */
+
 /*
  * mm-naive.c - The fastest, least memory-efficient malloc package.
  * 
@@ -30,7 +33,7 @@ team_t team = {
     /* First member's email address */
     "example@example.com",
     /* Second member's full name (leave blank if none) */
-    "SM, SG",
+    "",
     /* Second member's email address (leave blank if none) */
     ""
 };
@@ -68,6 +71,14 @@ team_t team = {
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp) - WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE(((char *)(bp) - DSIZE)))
 
+//// explicit free list macro /////
+/* 전제조건: payload는 언제나 기본적으로 DSIZE 만큼의 용량을 갖고 있다. */
+#define PRED(bp) (*(char**)(bp)) //bp가 가리키는 주소에 있는 주소가 가리키는 곳의 값을 가져오거나 넣을 수 있음
+#define SUCC(bp) (*(char**) (bp + WSIZE)) //위와 동일하나 succ는 pred 다음에 있기 때문에 WSIZE를 더한 곳을 가리킨다. 따라서 가져오거나 넣을 수 있음. 
+
+//bp <- payload address
+#define SET_PRED(bp, prev_bp) PUT(PRED(bp), prev_free_bp) //pred 위치에 이전 위치의 free block의 주소를 가리킴
+#define SET_SUCC(bp, next_bp) PUT(SUCC(bp), next_free_bp) // succ 위치에 다음 위치의 free block 주소를 가리킴 
 
 
 /* **********************[ FIRST FIT strategy ]******************************* */
@@ -78,6 +89,13 @@ static void* extend_heap(size_t words);
 static void* coalesce(void* bp);
 static void* find_fit(size_t asize);
 static void place(void* bp, size_t sizt);
+
+
+///////////////// explicit free block에서 사용하는 함수 선언
+//free할 때 이 함수를 사용해 블록을 더하고 
+//다른 블록과 연결할 때 rm_exblocks를 사용하여 지우고 연결한다.
+static void add_exblocks(void*p);
+static void rm_exblocks(void* p);
 
 ///////////////////// [ FIT STRAGEGY : 메모리 할당 정책 ]//////////////////////////////
 /* find fit strategy */
@@ -100,6 +118,8 @@ static void* find_fit(size_t asize){
 /////////////////////[ FREE / DEALLOCATE : 할당 해제  ]//////////////////////////////
 /*
 coalese free blocks
+[ 1 ] : allocated block (할당된 블록)
+[ 0 ] : free block (할당 해제된 블록 = 가용 블록)
 */
 static void* coalesce(void* bp){
 
@@ -111,6 +131,7 @@ static void* coalesce(void* bp){
     //case 1 : [ 1 ][ 0 ][ 1 ]  _ 101
     // 둘 다 1일 경우 - 할당 되어 있음, 결합 금지.
     if (prev_alloc && next_alloc){
+
         return bp; 
     }
     //case 2 : [ 1 ][ 0 ][ 0 ] _ 100
@@ -145,12 +166,26 @@ static void* coalesce(void* bp){
 void mm_free(void *ptr)
 {
     size_t size = GET_SIZE(HDRP(ptr));
-
-    PUT(HDRP(ptr), PACK(size, 0));
+    //header * footer 에 tag 남기기
+    PUT(HDRP(ptr), PACK(size, 0)); 
     PUT(FTRP(ptr), PACK(size, 0));
     coalesce(ptr);
-
 }
+
+//// Explicit free list : setting PRED, SUCC in Free
+/* EFL는 블록 할당을 해제할 때(free할 때) 다음에 있는 free블록과 이전에 있는 free 블록의 주소를 모두 알려 주어야 한다.*/
+static void add_exblocks(void*p){
+    //heap_list_p에? 왜 넣지?
+    //heap)list는 이동하지 않나?
+    PRED(p) = heap_listp;
+    SUCC(p) = SUCC(heap_listp);
+    
+
+
+    
+};
+static void rm_exblocks(void* p);
+
 
 /////////////////////[ HANDLING HEAP : 힙 초기화 & 힙 조작 ]//////////////////////////////
 /* 
@@ -162,15 +197,25 @@ int mm_init(void)
 
 {
     /* Create the initial empty heap */
-    if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1)
+    /* 4*WSIZE -> 6*WSIZE */
+    /* for next / prev */
+    if ((heap_listp = mem_sbrk(6*WSIZE)) == (void *)-1)
         return -1;
 
-    PUT(heap_listp, 0); /* Alignment padding */
+    PUT(heap_listp, 0); /* Alignment padding */ /* UNUSED */
+    PUT(heap_listp + WSIZE, PACK(2*DSIZE, 1)); /* prologue header */
+    PUT(heap_listp + 4*WSIZE, PACK(4*WSIZE, 1)); /* prologue footer */
+    PUT(heap_listp + 5* WSIZE, 0) /* epilogue block */
+    
+    /* pred block은 succ block을 가리키고, 
+       succ block은 pred block을 가리킨다. 
+       초기화 하는 것이라 서로를 가리키도록 해도 어차피 덮어 씌워질 것이다. 
+       NULL로 해도 돌아갈 것이다.*/
 
-    PUT(heap_listp + (1*WSIZE), PACK(DSIZE, 1)); /* Prologue header */
-    PUT(heap_listp + (2*WSIZE), PACK(DSIZE, 1)); /* Prologue footer */
-    PUT(heap_listp + (3*WSIZE), PACK(0, 1)); /* Epilogue header */
-    heap_listp += (2*WSIZE); //header와 footer 사이에 bp 를 세팅.
+    PUT(heap_listp + 2*WSIZE, (heap_listp + 3*WSIZE)); /* pred block: pointing to address of payload  */
+    PUT(heap_listp + 3*WSIZE, (heap_listp + 2*WSIZE)); /* succ block  */
+
+    heap_listp += 2*WSIZE;
 
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE/WSIZE) == NULL)
@@ -191,6 +236,10 @@ static void* extend_heap(size_t words){
     /* Initialize free block header/footer and the epilogue header */
     PUT(HDRP(bp), PACK(size, 0)); /* Free block header */
     PUT(FTRP(bp), PACK(size, 0)); /* Free block footer */
+
+    //explicit 해줘야 할 거 같은데 
+
+    
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); /* New epilogue header */
 
     /* Coalesce if the previous block was free */
